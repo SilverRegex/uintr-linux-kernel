@@ -10,6 +10,9 @@
 #include <linux/fdtable.h>
 #include <linux/sched.h>
 #include <linux/syscalls.h>
+#include <linux/mm.h>         // virt_to_phys, virt_to_page, page_to_phys
+#include <linux/fs.h>         // struct file
+#include <asm/io.h>
 
 #include <asm/uintr.h>
 static bool Debug = false;
@@ -56,12 +59,44 @@ static int uintrfd_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+#define UINTR_GET_UPID_PHYS_ADDR _IOR('u', 1, u64)
+
+static long uintrfd_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+    struct uintrfd_ctx *uintrfd_ctx = file->private_data;
+	u64 __user *upid_addr = (u64 __user *)arg;  // 用户空间指针
+	u64 virt_addr, phys_addr;
+	struct page *page;
+	
+    switch (cmd) {
+    case UINTR_GET_UPID_PHYS_ADDR: {
+        if (!uintrfd_ctx->r_info || !uintrfd_ctx->r_info->upid_ctx)
+            return -EINVAL;  // 检查数据结构是否有效
+            
+		virt_addr = (u64) uintrfd_ctx->r_info->upid_ctx->upid;
+		if (!virt_addr_valid((void *)virt_addr))
+            return -EFAULT;
+
+		// 翻译为物理地址
+		page = virt_to_page((void *)virt_addr);
+        phys_addr = page_to_phys(page) | (virt_addr & ~PAGE_MASK);
+
+        if (copy_to_user(upid_addr, &phys_addr, sizeof(phys_addr)))
+            return -EFAULT;  // 拷贝失败
+        return 0;
+    }
+    default:
+        return -ENOTTY;  // 未知命令
+    }
+}
+
 static const struct file_operations uintrfd_fops = {
 #ifdef CONFIG_PROC_FS
 	.show_fdinfo	= uintrfd_show_fdinfo,
 #endif
 	.release	= uintrfd_release,
 	.llseek		= noop_llseek,
+	.unlocked_ioctl	= uintrfd_ioctl,
 };
 
 /*
@@ -180,7 +215,7 @@ SYSCALL_DEFINE1(uintr_unregister_handler, unsigned int, flags)
 /*
  * sys_uintr_register_sender - setup user inter-processor interrupt sender.
  */
-SYSCALL_DEFINE2(uintr_register_sender, int, uintrfd, unsigned int, flags)
+SYSCALL_DEFINE2(uintr_register_sender, int64_t, uintrfd, unsigned int, flags)
 {
 	if (Debug) printk("uintr_register_sender called\n");
 	struct uintr_sender_info *s_info;
@@ -193,8 +228,17 @@ SYSCALL_DEFINE2(uintr_register_sender, int, uintrfd, unsigned int, flags)
 	if (!uintr_arch_enabled())
 		return -EOPNOTSUPP;
 
-	if (flags)
-		return -EINVAL;
+	if (flags) {
+		printk(KERN_WARNING "uintr_register_sender: flags %x\n", flags);
+		if ((~flags) & (1<<9)) {
+			return -EINVAL;
+		}
+		flags &= ~(1<<9);
+		if ((flags & 0x3f) != flags) {
+			return -EINVAL;
+		}
+		return raw_uintr_register_sender(uintrfd, flags);
+	}
 
 	f = fdget(uintrfd);
 	uintr_f = f.file;

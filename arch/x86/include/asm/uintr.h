@@ -50,6 +50,7 @@ int do_uintr_unregister_handler(void);
 int do_uintr_register_vector(struct uintr_receiver_info *r_info);
 void do_uintr_unregister_vector(struct uintr_receiver_info *r_info);
 
+int raw_uintr_register_sender(u64 upid_addr, u8 uvec);
 int do_uintr_register_sender(struct uintr_receiver_info *r_info,
 			     struct uintr_sender_info *s_info);
 void do_uintr_unregister_sender(struct uintr_receiver_info *r_info,

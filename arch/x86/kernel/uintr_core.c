@@ -436,6 +436,45 @@ void do_uintr_unregister_sender(struct uintr_receiver_info *r_info,
 	}
 }
 
+int raw_uintr_register_sender(u64 upid_addr, u8 uvec)
+{
+	struct uintr_uitt_entry *uitte = NULL;
+	struct uintr_sender *ui_send;
+	struct task_struct *t = current;
+	unsigned long flags;
+	int entry;
+	int ret;
+
+	if (is_uintr_sender(t)) {
+		entry = find_first_zero_bit((unsigned long *)t->thread.ui_send->uitt_mask,
+					    UINTR_MAX_UITT_NR);
+		if (entry >= UINTR_MAX_UITT_NR)
+			return -ENOSPC;
+	} else {
+		BUILD_BUG_ON(UINTR_MAX_UITT_NR < 1);
+		entry = 0;
+		ret = init_uitt();
+		if (ret)
+			return ret;
+	}
+
+	ui_send = t->thread.ui_send;
+
+	set_bit(entry, (unsigned long *)ui_send->uitt_mask);
+
+	spin_lock_irqsave(&ui_send->uitt_ctx->uitt_lock, flags);
+	uitte = &ui_send->uitt_ctx->uitt[entry];
+	pr_debug("send: sender=%d receiver in nimbos UITTE entry %d address %px\n",
+		 current->pid, entry, uitte);
+
+	uitte->user_vec = uvec;
+	uitte->target_upid_addr = upid_addr;
+	uitte->valid = 1;
+	spin_unlock_irqrestore(&ui_send->uitt_ctx->uitt_lock, flags);
+
+	return entry;
+} 
+
 int do_uintr_register_sender(struct uintr_receiver_info *r_info,
 			     struct uintr_sender_info *s_info)
 {
