@@ -116,10 +116,51 @@ static inline u32 cpu_to_ndst(int cpu)
 	return apicid;
 }
 
+// 固定内存区域
+#define UPID_LINUX_MEM_START ((uintptr_t)(0xffffff0008000000UL - 0x2000))
+#define UPID_LINUX_MEM_SIZE  0x1000  // 4KB
+#define UPID_BLOCK_SIZE 16
+#define MAX_UPID_BLOCKS (UPID_LINUX_MEM_SIZE / UPID_BLOCK_SIZE)
+
+// 简单的位图分配器
+static bool used_upid_blocks[MAX_UPID_BLOCKS] = {false};
+
+// 分配函数
+void* alloc_uintr_upid(void) {
+	size_t i = 0;
+    for (; i < MAX_UPID_BLOCKS; i++) {
+        if (!used_upid_blocks[i]) {
+            used_upid_blocks[i] = true;
+            return (void*)(UPID_LINUX_MEM_START + i * UPID_BLOCK_SIZE);
+        }
+    }
+    return NULL; // 没有可用空间
+}
+
+// 释放函数
+void free_uintr_upid(void* ptr) {
+    uintptr_t addr = (uintptr_t)ptr;
+    size_t index = (addr - UPID_LINUX_MEM_START) / UPID_BLOCK_SIZE;
+    
+    // 检查指针是否在有效范围内
+    if (addr < UPID_LINUX_MEM_START || addr >= UPID_LINUX_MEM_START + UPID_LINUX_MEM_SIZE) {
+        return;
+    }
+    
+    // 检查是否对齐
+    if ((addr - UPID_LINUX_MEM_START) % UPID_BLOCK_SIZE != 0) {
+        return;
+    }
+
+    if (index < MAX_UPID_BLOCKS) {
+        used_upid_blocks[index] = false;
+    }
+}
+
 static void free_upid(struct uintr_upid_ctx *upid_ctx)
 {
 	put_task_struct(upid_ctx->task);
-	kfree(upid_ctx->upid);
+	free_uintr_upid(upid_ctx->upid);
 	upid_ctx->upid = NULL;
 	kfree(upid_ctx);
 }
@@ -134,7 +175,7 @@ static struct uintr_upid_ctx *alloc_upid(void)
 	if (!upid_ctx)
 		return NULL;
 
-	upid = kzalloc(sizeof(*upid), GFP_KERNEL);
+	upid = alloc_uintr_upid();
 
 	if (!upid) {
 		kfree(upid_ctx);

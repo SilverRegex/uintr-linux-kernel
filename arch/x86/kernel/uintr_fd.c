@@ -65,8 +65,8 @@ static long uintrfd_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 {
     struct uintrfd_ctx *uintrfd_ctx = file->private_data;
 	u64 __user *upid_addr = (u64 __user *)arg;  // 用户空间指针
-	u64 virt_addr, phys_addr;
-	struct page *page;
+	u64 virt_addr; //, phys_addr;
+	// struct page *page;
 	
     switch (cmd) {
     case UINTR_GET_UPID_PHYS_ADDR: {
@@ -74,14 +74,15 @@ static long uintrfd_ioctl(struct file *file, unsigned int cmd, unsigned long arg
             return -EINVAL;  // 检查数据结构是否有效
             
 		virt_addr = (u64) uintrfd_ctx->r_info->upid_ctx->upid;
-		if (!virt_addr_valid((void *)virt_addr))
-            return -EFAULT;
+		// if (!virt_addr_valid((void *)virt_addr))
+        //     return -EFAULT;
 
 		// 翻译为物理地址
-		page = virt_to_page((void *)virt_addr);
-        phys_addr = page_to_phys(page) | (virt_addr & ~PAGE_MASK);
+		// page = virt_to_page((void *)virt_addr);
+        // phys_addr = page_to_phys(page) | (virt_addr & ~PAGE_MASK);
 
-        if (copy_to_user(upid_addr, &phys_addr, sizeof(phys_addr)))
+        // if (copy_to_user(upid_addr, &phys_addr, sizeof(phys_addr)))
+		if (copy_to_user(upid_addr, &virt_addr, sizeof(virt_addr)))
             return -EFAULT;  // 拷贝失败
         return 0;
     }
