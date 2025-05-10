@@ -65,7 +65,7 @@ static long uintrfd_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 {
     struct uintrfd_ctx *uintrfd_ctx = file->private_data;
 	u64 __user *upid_addr = (u64 __user *)arg;  // 用户空间指针
-	u64 virt_addr; //, phys_addr;
+	u64 virt_addr, phys_addr;
 	// struct page *page;
 	
     switch (cmd) {
@@ -82,7 +82,8 @@ static long uintrfd_ioctl(struct file *file, unsigned int cmd, unsigned long arg
         // phys_addr = page_to_phys(page) | (virt_addr & ~PAGE_MASK);
 
         // if (copy_to_user(upid_addr, &phys_addr, sizeof(phys_addr)))
-		if (copy_to_user(upid_addr, &virt_addr, sizeof(virt_addr)))
+		phys_addr = virt_addr - uintr_mem_offset();
+		if (copy_to_user(upid_addr, &phys_addr, sizeof(phys_addr)))
             return -EFAULT;  // 拷贝失败
         return 0;
     }
@@ -169,7 +170,7 @@ out_free_ctx:
  */
 SYSCALL_DEFINE2(uintr_register_handler, u64 __user *, handler, unsigned int, flags)
 {	
-	if (Debug) printk("uintr_register_handler called\n");
+	printk("uintr_register_handler called\n");
 	int ret;
 
 	if (!uintr_arch_enabled())
@@ -184,7 +185,7 @@ SYSCALL_DEFINE2(uintr_register_handler, u64 __user *, handler, unsigned int, fla
 
 	ret = do_uintr_register_handler((u64)handler);
 	if(Debug) printk("recv: register handler task=%d flags %d handler %lx ret %d\n",current->pid, flags, (unsigned long)handler, ret);
-	pr_debug("recv: register handler task=%d flags %d handler %lx ret %d\n",
+	printk("recv: register handler task=%d flags %d handler %lx ret %d\n",
 		 current->pid, flags, (unsigned long)handler, ret);
 
 	return ret;
@@ -195,7 +196,7 @@ SYSCALL_DEFINE2(uintr_register_handler, u64 __user *, handler, unsigned int, fla
  */
 SYSCALL_DEFINE1(uintr_unregister_handler, unsigned int, flags)
 {
-	if (Debug) printk("uintr_unregister_handler called\n");
+	printk("uintr_unregister_handler called\n");
 	int ret;
 
 	if (!uintr_arch_enabled())
@@ -207,7 +208,7 @@ SYSCALL_DEFINE1(uintr_unregister_handler, unsigned int, flags)
 	ret = do_uintr_unregister_handler();
 	if(Debug) printk("recv: unregister handler task=%d flags %d ret %d\n",
 		 current->pid, flags, ret);
-	pr_debug("recv: unregister handler task=%d flags %d ret %d\n",
+	printk("recv: unregister handler task=%d flags %d ret %d\n",
 		 current->pid, flags, ret);
 
 	return ret;

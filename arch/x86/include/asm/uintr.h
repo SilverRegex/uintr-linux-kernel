@@ -64,6 +64,8 @@ void switch_uintr_return(void);
 
 int uintr_receiver_wait(void);
 void uintr_wake_up_process(void);
+void upid_shared_mem_init(void);
+uint64_t uintr_mem_offset(void);
 
 #else /* !CONFIG_X86_USER_INTERRUPTS */
 
@@ -71,7 +73,19 @@ static inline void uintr_free(struct task_struct *task) {}
 static inline void switch_uintr_prepare(struct task_struct *prev) {}
 static inline void switch_uintr_return(void) {}
 static inline void uintr_wake_up_process(void) {}
+void upid_shared_mem_init(void) {}
+static inline uint64_t uintr_mem_offset(void)
+{
+	return 0;
+}
 
 #endif /* CONFIG_X86_USER_INTERRUPTS */
+
+// 固定内存区域
+#define UPID_LINUX_MEM_SIZE  0x1000  // 4KB
+#define UPID_SHARED_MEM_SIZE 0x2000
+#define UPID_BLOCK_SIZE 16
+#define UPID_SHARED_MEM_PHYS_ADDR   (uint64_t)(0x41ffe000)
+#define MAX_UPID_BLOCKS (UPID_LINUX_MEM_SIZE / UPID_BLOCK_SIZE)
 
 #endif /* _ASM_X86_UINTR_H */

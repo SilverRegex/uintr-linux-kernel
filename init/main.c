@@ -106,6 +106,7 @@
 #include <asm/setup.h>
 #include <asm/sections.h>
 #include <asm/cacheflush.h>
+#include <asm/uintr.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/initcall.h>
@@ -986,6 +987,8 @@ asmlinkage __visible void __init __no_sanitize_address start_kernel(void)
 	sort_main_extable();
 	trap_init();
 	mm_init();
+
+	upid_shared_mem_init();
 
 	ftrace_init();
 

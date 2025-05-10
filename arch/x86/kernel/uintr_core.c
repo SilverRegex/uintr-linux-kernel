@@ -13,6 +13,7 @@
 #include <linux/slab.h>
 #include <linux/task_work.h>
 #include <linux/uaccess.h>
+#include <linux/io.h>
 
 #include <asm/apic.h>
 #include <asm/fpu/internal.h>
@@ -116,45 +117,98 @@ static inline u32 cpu_to_ndst(int cpu)
 	return apicid;
 }
 
-// 固定内存区域
-#define UPID_LINUX_MEM_START ((uintptr_t)(0xffffff0008000000UL - 0x2000))
-#define UPID_LINUX_MEM_SIZE  0x1000  // 4KB
-#define UPID_BLOCK_SIZE 16
-#define MAX_UPID_BLOCKS (UPID_LINUX_MEM_SIZE / UPID_BLOCK_SIZE)
+static void *upid_shared_mem_start = 0;
+#define upid_linux_mem_start upid_shared_mem_start
+static bool upid_initialized = false;
 
 // 简单的位图分配器
 static bool used_upid_blocks[MAX_UPID_BLOCKS] = {false};
+static DEFINE_SPINLOCK(upid_lock); // 在文件顶部添加
+
+void upid_shared_mem_init(void) {
+	// pgprot_t prot = PAGE_KERNEL;  // 可改为 PAGE_KERNEL_NOCACHE 如果需要非缓存
+    // int ret;
+	// struct vm_struct *vma;
+	static struct resource *upid_mem_res;
+
+	upid_mem_res = request_mem_region(UPID_SHARED_MEM_PHYS_ADDR, UPID_SHARED_MEM_SIZE, "UPID shared mem");
+	if (!upid_mem_res) {
+		pr_err("jailhouse: request_mem_region failed for hypervisor "
+			   "memory.\n");
+		return;
+	}
+
+	// __get_vm_area_caller(UPID_SHARED_MEM_SIZE, VM_IOREMAP, UPID_SHARED_MEM_VIRT_ADDR, UPID_SHARED_MEM_VIRT_ADDR + UPID_SHARED_MEM_SIZE + PAGE_SIZE, __builtin_return_address(0));
+
+	// if (!vma) {
+	// 	release_mem_region(upid_mem_res->start, resource_size(upid_mem_res));
+	// 	pr_err("Failed to allocate vm_struct for UPID shared memory\n");
+	// 	return;
+	// }
+
+    // 映射物理地址到自定义虚拟地址
+    // ret = ioremap_page_range(UPID_SHARED_MEM_VIRT_ADDR, UPID_SHARED_MEM_VIRT_ADDR + UPID_SHARED_MEM_SIZE, UPID_SHARED_MEM_PHYS_ADDR, prot);
+	upid_shared_mem_start = ioremap(UPID_SHARED_MEM_PHYS_ADDR, UPID_SHARED_MEM_SIZE);
+    if (!upid_shared_mem_start) {
+		// vunmap(vma->addr);
+		release_mem_region(upid_mem_res->start, resource_size(upid_mem_res));
+        pr_err("Failed to map 0x%llx\n", UPID_SHARED_MEM_PHYS_ADDR);
+    }
+	else {
+		pr_info("Mapped phys 0x%llx -> virt %px\n", UPID_SHARED_MEM_PHYS_ADDR, upid_shared_mem_start);
+		upid_initialized = true;
+	}
+}
 
 // 分配函数
 void* alloc_uintr_upid(void) {
+	unsigned long flags;
 	size_t i = 0;
+	void *ret = NULL;
+
+	if (!upid_initialized) {
+		return kzalloc(sizeof(struct uintr_upid), GFP_KERNEL);
+	}
+
+	spin_lock_irqsave(&upid_lock, flags);
     for (; i < MAX_UPID_BLOCKS; i++) {
         if (!used_upid_blocks[i]) {
             used_upid_blocks[i] = true;
-            return (void*)(UPID_LINUX_MEM_START + i * UPID_BLOCK_SIZE);
+            ret = (void*)(upid_shared_mem_start + i * UPID_BLOCK_SIZE);
+			break;
         }
     }
-    return NULL; // 没有可用空间
+	spin_unlock_irqrestore(&upid_lock, flags);
+    return ret; // 没有可用空间
 }
 
 // 释放函数
 void free_uintr_upid(void* ptr) {
-    uintptr_t addr = (uintptr_t)ptr;
-    size_t index = (addr - UPID_LINUX_MEM_START) / UPID_BLOCK_SIZE;
+	unsigned long flags;
+	size_t index;
+
+	if (!upid_initialized) {
+		kfree(ptr);
+		return;
+	}
+
+    index = (ptr - upid_shared_mem_start) / UPID_BLOCK_SIZE;
     
     // 检查指针是否在有效范围内
-    if (addr < UPID_LINUX_MEM_START || addr >= UPID_LINUX_MEM_START + UPID_LINUX_MEM_SIZE) {
+    if (ptr < upid_shared_mem_start || ptr >= upid_shared_mem_start + UPID_LINUX_MEM_SIZE) {
         return;
     }
     
     // 检查是否对齐
-    if ((addr - UPID_LINUX_MEM_START) % UPID_BLOCK_SIZE != 0) {
+    if ((ptr - upid_shared_mem_start) % UPID_BLOCK_SIZE != 0) {
         return;
     }
 
+	spin_lock_irqsave(&upid_lock, flags);
     if (index < MAX_UPID_BLOCKS) {
         used_upid_blocks[index] = false;
     }
+	spin_unlock_irqrestore(&upid_lock, flags);
 }
 
 static void free_upid(struct uintr_upid_ctx *upid_ctx)
@@ -477,6 +531,14 @@ void do_uintr_unregister_sender(struct uintr_receiver_info *r_info,
 	}
 }
 
+uint64_t uintr_mem_offset(void)
+{
+	if (!upid_initialized) {
+		return 0;
+	}
+	return (uint64_t)upid_shared_mem_start - UPID_SHARED_MEM_PHYS_ADDR;
+}
+
 int raw_uintr_register_sender(u64 upid_addr, u8 uvec)
 {
 	struct uintr_uitt_entry *uitte = NULL;
@@ -485,6 +547,8 @@ int raw_uintr_register_sender(u64 upid_addr, u8 uvec)
 	unsigned long flags;
 	int entry;
 	int ret;
+
+	upid_addr = upid_addr + uintr_mem_offset();
 
 	if (is_uintr_sender(t)) {
 		entry = find_first_zero_bit((unsigned long *)t->thread.ui_send->uitt_mask,
@@ -641,7 +705,7 @@ int do_uintr_unregister_handler(void)
 	if (!is_uintr_receiver(t))
 		return -EINVAL;
 
-	pr_debug("recv: Unregister handler and clear MSRs for task=%d\n",
+	printk("recv: Unregister handler and clear MSRs for task=%d\n",
 		 t->pid);
 
 	/*
@@ -714,7 +778,7 @@ int do_uintr_register_handler(u64 handler)
 	ui_recv->upid_ctx = alloc_upid();
 	if (!ui_recv->upid_ctx) {
 		kfree(ui_recv);
-		pr_debug("recv: alloc upid failed for task=%d\n", t->pid);
+		printk("recv: alloc upid failed for task=%d\n", t->pid);
 		return -ENOMEM;
 	}
 
@@ -765,7 +829,7 @@ int do_uintr_register_handler(u64 handler)
 
 	fpregs_unlock();
 
-	pr_debug("recv: task=%d register handler=%llx upid %px\n",
+	printk("recv: task=%d register handler=%llx upid %px\n",
 		 t->pid, handler, upid);
 
 	return 0;
