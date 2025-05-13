@@ -316,16 +316,11 @@ int ioremap_page_range(unsigned long addr, unsigned long end,
 {
 	int err;
 
-	err = vmap_range_noflush(addr, end, phys_addr, prot,
+	err = vmap_range_noflush(addr, end, phys_addr, pgprot_nx(prot),
 				 ioremap_max_page_shift);
 	flush_cache_vmap(addr, end);
 	return err;
 }
-
-#ifndef export_ioremap_page_range
-#define export_ioremap_page_range
-EXPORT_SYMBOL(ioremap_page_range);
-#endif
 
 static void vunmap_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 			     pgtbl_mod_mask *mask)
@@ -2446,10 +2441,6 @@ struct vm_struct *__get_vm_area_caller(unsigned long size, unsigned long flags,
 				  NUMA_NO_NODE, GFP_KERNEL, caller);
 }
 
-#ifndef export___get_vm_area_caller
-#define export___get_vm_area_caller
-EXPORT_SYMBOL(__get_vm_area_caller);
-#endif
 /**
  * get_vm_area - reserve a contiguous kernel virtual area
  * @size:	 size of the area
