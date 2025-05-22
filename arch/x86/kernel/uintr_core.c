@@ -175,6 +175,7 @@ void* alloc_uintr_upid(void) {
         if (!used_upid_blocks[i]) {
             used_upid_blocks[i] = true;
             ret = (void*)(upid_shared_mem_start + i * UPID_BLOCK_SIZE);
+			memset(ret, 0, UPID_BLOCK_SIZE);
 			break;
         }
     }
@@ -705,7 +706,7 @@ int do_uintr_unregister_handler(void)
 	if (!is_uintr_receiver(t))
 		return -EINVAL;
 
-	printk("recv: Unregister handler and clear MSRs for task=%d\n",
+	pr_debug("recv: Unregister handler and clear MSRs for task=%d\n",
 		 t->pid);
 
 	/*
@@ -778,7 +779,7 @@ int do_uintr_register_handler(u64 handler)
 	ui_recv->upid_ctx = alloc_upid();
 	if (!ui_recv->upid_ctx) {
 		kfree(ui_recv);
-		printk("recv: alloc upid failed for task=%d\n", t->pid);
+		pr_debug("recv: alloc upid failed for task=%d\n", t->pid);
 		return -ENOMEM;
 	}
 
@@ -829,7 +830,7 @@ int do_uintr_register_handler(u64 handler)
 
 	fpregs_unlock();
 
-	printk("recv: task=%d register handler=%llx upid %px\n",
+	pr_debug("recv: task=%d register handler=%llx upid %px\n",
 		 t->pid, handler, upid);
 
 	return 0;

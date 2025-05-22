@@ -768,8 +768,10 @@ void __init fpu__init_system_xstate(void)
 	/*
 	 * Find supervisor xstates supported by the processor.
 	 */
+	pr_info("x86/fpu: xstate features 0x%llx\n", xfeatures_mask_all);
 	cpuid_count(XSTATE_CPUID, 1, &eax, &ebx, &ecx, &edx);
 	xfeatures_mask_all |= ecx + ((u64)edx << 32);
+	pr_info("x86/fpu: xstate features 0x%llx\n", xfeatures_mask_all);
 
 	if ((xfeatures_mask_uabi() & XFEATURE_MASK_FPSSE) != XFEATURE_MASK_FPSSE) {
 		/*

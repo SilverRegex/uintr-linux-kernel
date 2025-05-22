@@ -170,7 +170,7 @@ out_free_ctx:
  */
 SYSCALL_DEFINE2(uintr_register_handler, u64 __user *, handler, unsigned int, flags)
 {	
-	printk("uintr_register_handler called\n");
+	if (Debug) printk("uintr_register_handler called\n");
 	int ret;
 
 	if (!uintr_arch_enabled())
@@ -185,7 +185,7 @@ SYSCALL_DEFINE2(uintr_register_handler, u64 __user *, handler, unsigned int, fla
 
 	ret = do_uintr_register_handler((u64)handler);
 	if(Debug) printk("recv: register handler task=%d flags %d handler %lx ret %d\n",current->pid, flags, (unsigned long)handler, ret);
-	printk("recv: register handler task=%d flags %d handler %lx ret %d\n",
+	pr_debug("recv: register handler task=%d flags %d handler %lx ret %d\n",
 		 current->pid, flags, (unsigned long)handler, ret);
 
 	return ret;
@@ -196,7 +196,7 @@ SYSCALL_DEFINE2(uintr_register_handler, u64 __user *, handler, unsigned int, fla
  */
 SYSCALL_DEFINE1(uintr_unregister_handler, unsigned int, flags)
 {
-	printk("uintr_unregister_handler called\n");
+	if (Debug) printk("uintr_unregister_handler called\n");
 	int ret;
 
 	if (!uintr_arch_enabled())
@@ -208,7 +208,7 @@ SYSCALL_DEFINE1(uintr_unregister_handler, unsigned int, flags)
 	ret = do_uintr_unregister_handler();
 	if(Debug) printk("recv: unregister handler task=%d flags %d ret %d\n",
 		 current->pid, flags, ret);
-	printk("recv: unregister handler task=%d flags %d ret %d\n",
+	pr_debug("recv: unregister handler task=%d flags %d ret %d\n",
 		 current->pid, flags, ret);
 
 	return ret;
