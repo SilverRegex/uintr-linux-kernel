@@ -540,7 +540,7 @@ uint64_t uintr_mem_offset(void)
 	return (uint64_t)upid_shared_mem_start - UPID_SHARED_MEM_PHYS_ADDR;
 }
 
-int raw_uintr_register_sender(u64 upid_addr, u8 uvec)
+int raw_uintr_register_sender(u64 upid_addr, u8 uvec, bool from_nimbos)
 {
 	struct uintr_uitt_entry *uitte = NULL;
 	struct uintr_sender *ui_send;
@@ -549,7 +549,9 @@ int raw_uintr_register_sender(u64 upid_addr, u8 uvec)
 	int entry;
 	int ret;
 
-	// upid_addr = upid_addr + uintr_mem_offset();
+	if (from_nimbos) {
+		upid_addr = upid_addr + uintr_mem_offset();
+	}
 
 	if (is_uintr_sender(t)) {
 		entry = find_first_zero_bit((unsigned long *)t->thread.ui_send->uitt_mask,

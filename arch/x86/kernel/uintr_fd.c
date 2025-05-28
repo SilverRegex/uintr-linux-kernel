@@ -235,11 +235,12 @@ SYSCALL_DEFINE2(uintr_register_sender, int64_t, uintrfd, unsigned int, flags)
 		if ((~flags) & (1<<9)) {
 			return -EINVAL;
 		}
+		bool from_nimbos = flags & (1<<10);
 		flags &= ~(1<<9);
 		if ((flags & 0x3f) != flags) {
 			return -EINVAL;
 		}
-		return raw_uintr_register_sender(uintrfd, flags);
+		return raw_uintr_register_sender(uintrfd, flags, from_nimbos);
 	}
 
 	f = fdget(uintrfd);
