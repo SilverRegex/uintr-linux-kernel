@@ -549,7 +549,7 @@ int raw_uintr_register_sender(u64 upid_addr, u8 uvec)
 	int entry;
 	int ret;
 
-	upid_addr = upid_addr + uintr_mem_offset();
+	// upid_addr = upid_addr + uintr_mem_offset();
 
 	if (is_uintr_sender(t)) {
 		entry = find_first_zero_bit((unsigned long *)t->thread.ui_send->uitt_mask,
